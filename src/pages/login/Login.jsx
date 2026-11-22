@@ -34,6 +34,7 @@ const Login = () => {
       }
 
       localStorage.setItem("mailboxToken", data.idToken);
+      localStorage.setItem("mailboxUid", data.localId);
       localStorage.setItem(
         "mailboxTokenExpiresAt",
         String(Date.now() + Number(data.expiresIn) * 1000),

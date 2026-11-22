@@ -1,0 +1,37 @@
+{
+  "rules": {
+    "messages": {
+      ".indexOn": ["recipientEmail", "senderUid"],
+      ".read": "auth != null && ((query.orderByChild === 'recipientEmail' && query.equalTo === auth.token.email) || (query.orderByChild === 'senderUid' && query.equalTo === auth.uid))",
+      "$messageId": {
+        ".read": "auth != null && (data.child('senderUid').val() === auth.uid || data.child('recipientEmail').val() === auth.token.email)",
+        ".write": "auth != null && !data.exists() && newData.child('senderUid').val() === auth.uid && newData.child('senderEmail').val() === auth.token.email",
+        ".validate": "newData.hasChildren(['senderUid', 'senderEmail', 'recipientEmail', 'subject', 'bodyHtml', 'bodyText', 'sentAt'])",
+        "senderUid": {
+          ".validate": "newData.isString() && newData.val() === auth.uid"
+        },
+        "senderEmail": {
+          ".validate": "newData.isString() && newData.val() === auth.token.email"
+        },
+        "recipientEmail": {
+          ".validate": "newData.isString()"
+        },
+        "subject": {
+          ".validate": "newData.isString()"
+        },
+        "bodyHtml": {
+          ".validate": "newData.isString()"
+        },
+        "bodyText": {
+          ".validate": "newData.isString()"
+        },
+        "sentAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}

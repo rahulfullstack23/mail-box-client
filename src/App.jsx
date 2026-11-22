@@ -1,17 +1,22 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Login from "./pages/login/Login";
 import Signup from "./pages/signup/Signup";
-import "./App.css";
 
-const hasActiveSession = () =>
+const Mailbox = lazy(() => import("./pages/mailbox/Mailbox"));
+
+const hasUnexpiredToken = () =>
   Boolean(
     localStorage.getItem("mailboxToken") &&
       Number(localStorage.getItem("mailboxTokenExpiresAt")) > Date.now(),
   );
 
+const hasActiveSession = () =>
+  hasUnexpiredToken() && Boolean(localStorage.getItem("mailboxUid"));
+
 const App = () => {
   const [page, setPage] = useState(() => {
     if (hasActiveSession()) return "welcome";
+    if (hasUnexpiredToken()) return "login";
     return window.location.hash === "#login" ? "login" : "signup";
   });
 
@@ -19,6 +24,8 @@ const App = () => {
     const handleHashChange = () => {
       if (window.location.hash === "#welcome" && hasActiveSession()) {
         setPage("welcome");
+      } else if (hasUnexpiredToken()) {
+        setPage("login");
       } else {
         setPage(window.location.hash === "#login" ? "login" : "signup");
       }
@@ -33,16 +40,17 @@ const App = () => {
       localStorage.removeItem("mailboxToken");
       localStorage.removeItem("mailboxTokenExpiresAt");
       localStorage.removeItem("mailboxEmail");
+      localStorage.removeItem("mailboxUid");
       window.location.hash = "#login";
     };
 
     return (
-      <main className="welcome-screen">
-        <p>Welcome to your mail box</p>
-        <button type="button" onClick={handleLogout}>
-          Log out
-        </button>
-      </main>
+      <Suspense fallback={<main aria-busy="true">Loading mailbox...</main>}>
+        <Mailbox
+          email={localStorage.getItem("mailboxEmail") || ""}
+          onLogout={handleLogout}
+        />
+      </Suspense>
     );
   }
 
