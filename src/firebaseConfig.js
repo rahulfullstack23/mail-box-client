@@ -1,0 +1,3 @@
+export const FIREBASE_API_KEY =
+  import.meta.env.VITE_FIREBASE_API_KEY ||
+  "AIzaSyAuC3BnZBPINyXYSyC1DEGvaLoHM4zq4V0";
