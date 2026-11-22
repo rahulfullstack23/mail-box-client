@@ -1,0 +1,130 @@
+.login-page {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px 16px;
+}
+
+.login-card {
+  width: min(100%, 340px);
+  padding: 24px 22px 20px;
+  border: 1px solid #ccc;
+  background: #fff;
+  text-align: center;
+}
+
+.login-card h1 {
+  margin: 18px 0 38px;
+  font-size: 28px;
+  font-weight: 400;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form > input,
+.password-field input {
+  width: 100%;
+  height: 54px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 30px;
+  outline-offset: 3px;
+  color: #fff;
+  background: #050505;
+}
+
+.login-form input::placeholder {
+  color: #777;
+  opacity: 1;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 50px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  padding: 5px;
+  transform: translateY(-50%);
+  border: 0;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.login-form .login-submit {
+  min-height: 44px;
+  margin-top: 23px;
+  border: 0;
+  border-radius: 24px;
+  color: #fff;
+  background: #0798ee;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.login-form .login-submit:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.login-form .forgot-password {
+  align-self: center;
+  margin-top: -9px;
+  padding: 0;
+  border: 0;
+  color: #555bff;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.signup-prompt {
+  width: min(100%, 340px);
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #9fa9a4;
+  border-radius: 5px;
+  background: #e8f6f0;
+  text-align: center;
+}
+
+.signup-prompt a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.login-error {
+  margin: 12px 0 0;
+  color: #b42318;
+}
+
+.login-status {
+  margin: 12px 0 0;
+  color: #18794e;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
