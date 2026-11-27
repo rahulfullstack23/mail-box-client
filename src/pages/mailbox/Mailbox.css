@@ -405,8 +405,14 @@
 }
 
 .folder-count {
+  min-width: 20px;
+  padding: 2px 6px;
   margin-left: auto;
+  border-radius: 10px;
+  color: #fff;
+  background: #168bf0;
   font-size: 12px;
+  text-align: center;
 }
 
 .mailbox-content > .mailbox-message {
@@ -472,7 +478,33 @@
 .message-row-sender,
 .message-row-summary strong {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.message-row-sender {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-row-sender > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #168bf0;
+}
+
+.message-row[data-unread="true"] .message-row-sender,
+.message-row[data-unread="true"] .message-row-summary strong {
+  font-weight: 700;
 }
 
 .message-row-summary {

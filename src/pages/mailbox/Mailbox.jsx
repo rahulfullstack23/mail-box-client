@@ -29,7 +29,8 @@ const Mailbox = ({ email, onLogout }) => {
   const [subject, setSubject] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedMessageId, setSelectedMessageId] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [inboxMessages, setInboxMessages] = useState([]);
+  const [sentMessages, setSentMessages] = useState([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -38,6 +39,8 @@ const Mailbox = ({ email, onLogout }) => {
   const token = localStorage.getItem("mailboxToken") || "";
   const uid = localStorage.getItem("mailboxUid") || "";
   const accountEmail = email.trim();
+  const messages = activeView === "sent" ? sentMessages : inboxMessages;
+  const unreadCount = inboxMessages.filter((message) => message.read !== true).length;
   const editor = useEditor({
     extensions: [StarterKit, Highlight.configure({ multicolor: false })],
     content: "<p></p>",
@@ -66,7 +69,10 @@ const Mailbox = ({ email, onLogout }) => {
         const nextMessages = Object.entries(data || {})
           .map(([id, message]) => ({ id, ...message }))
           .sort((first, second) => second.sentAt - first.sentAt);
-        if (isCurrent) setMessages(nextMessages);
+        if (isCurrent) {
+          if (activeView === "inbox") setInboxMessages(nextMessages);
+          else setSentMessages(nextMessages);
+        }
       } catch (loadError) {
         if (isCurrent) setError(loadError.message);
       } finally {
@@ -85,6 +91,38 @@ const Mailbox = ({ email, onLogout }) => {
     setStatus("");
     setSelectedMessageId("");
     setActiveView(view);
+  };
+
+  const openMessage = async (message) => {
+    setSelectedMessageId(message.id);
+    setError("");
+
+    if (activeView !== "inbox" || message.read === true) return;
+
+    try {
+      const response = await fetch(
+        `${databaseMessagesUrl.replace(/\.json$/, `/${encodeURIComponent(message.id)}.json`)}?auth=${encodeURIComponent(token)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ read: true }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(getDatabaseError(data, response.status));
+      }
+
+      setInboxMessages((currentMessages) =>
+        currentMessages.map((currentMessage) =>
+          currentMessage.id === message.id
+            ? { ...currentMessage, read: true }
+            : currentMessage,
+        ),
+      );
+    } catch (readError) {
+      setError(`Could not save read status: ${readError.message}`);
+    }
   };
 
   const sendMessage = async (event) => {
@@ -112,6 +150,7 @@ const Mailbox = ({ email, onLogout }) => {
             bodyHtml: editor.getHTML(),
             bodyText: editor.getText(),
             sentAt: Date.now(),
+            read: false,
           }),
         },
       );
@@ -200,8 +239,13 @@ const Mailbox = ({ email, onLogout }) => {
             >
               <span aria-hidden="true">{view === "inbox" ? "▣" : "↗"}</span>
               {label}
-              {view === "inbox" && messages.length > 0 && activeView === "inbox" && (
-                <span className="folder-count">{messages.length}</span>
+              {view === "inbox" && unreadCount > 0 && (
+                <span
+                  className="folder-count"
+                  aria-label={`${unreadCount} unread messages`}
+                >
+                  {unreadCount}
+                </span>
               )}
             </button>
           ))}
@@ -336,13 +380,19 @@ const Mailbox = ({ email, onLogout }) => {
                     <li key={message.id}>
                       <button
                         className="message-row"
+                        data-unread={activeView === "inbox" && message.read !== true}
                         type="button"
-                        onClick={() => setSelectedMessageId(message.id)}
+                        onClick={() => openMessage(message)}
                       >
                         <span className="message-row-sender">
-                          {activeView === "inbox"
-                            ? message.senderEmail
-                            : `To: ${message.recipientEmail}`}
+                          {activeView === "inbox" && message.read !== true && (
+                            <span className="unread-dot" aria-label="Unread" />
+                          )}
+                          <span>
+                            {activeView === "inbox"
+                              ? message.senderEmail
+                              : `To: ${message.recipientEmail}`}
+                          </span>
                         </span>
                         <span className="message-row-summary">
                           <strong>{message.subject || "(no subject)"}</strong>
