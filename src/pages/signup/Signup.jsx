@@ -1,9 +1,10 @@
 
 import { useState } from "react";
-import { FIREBASE_API_KEY } from "../../firebaseConfig";
+import useFirebaseAuth from "../../hooks/useFirebaseAuth";
 import "./Signup.css";
 
 const Signup = () => {
+  const { signUp } = useFirebaseAuth();
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -24,26 +25,11 @@ const Signup = () => {
 
     try {
       setIsLoading(true);
-      const response = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(FIREBASE_API_KEY)}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            password,
-            returnSecureToken: true,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error?.message || "SIGN_UP_FAILED");
-      }
+      await signUp({
+        email,
+        password,
+        returnSecureToken: true,
+      });
 
       setSuccess(true);
       form.reset();

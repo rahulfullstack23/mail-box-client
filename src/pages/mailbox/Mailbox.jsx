@@ -3,25 +3,20 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import Highlight from "@tiptap/extension-highlight";
 import StarterKit from "@tiptap/starter-kit";
 import DOMPurify from "dompurify";
-import { FIREBASE_DATABASE_URL } from "../../firebaseConfig";
+import useMailboxApi from "./useMailboxApi";
 import "./Mailbox.css";
 
-const databaseMessagesUrl =
-  `${FIREBASE_DATABASE_URL.replace(/\/+$/, "")}/messages.json`;
-
-const getDatabaseError = (data, status) =>
-  (typeof data === "string" && data) ||
-  data?.error ||
-  `Realtime Database request failed (${status}).`;
-
-const buildMessagesQueryUrl = (field, value, token) => {
-  const query = new URLSearchParams({
-    auth: token,
-    orderBy: JSON.stringify(field),
-    equalTo: JSON.stringify(value),
+const haveMessagesChanged = (currentMessages, nextMessages) =>
+  currentMessages.length !== nextMessages.length ||
+  currentMessages.some((currentMessage, index) => {
+    const nextMessage = nextMessages[index];
+    const currentKeys = Object.keys(currentMessage);
+    const nextKeys = Object.keys(nextMessage);
+    return (
+      currentKeys.length !== nextKeys.length ||
+      currentKeys.some((key) => currentMessage[key] !== nextMessage[key])
+    );
   });
-  return `${databaseMessagesUrl}?${query}`;
-};
 
 const Mailbox = ({ email, onLogout }) => {
   const [activeView, setActiveView] = useState("inbox");
@@ -40,6 +35,13 @@ const Mailbox = ({ email, onLogout }) => {
   const token = localStorage.getItem("mailboxToken") || "";
   const uid = localStorage.getItem("mailboxUid") || "";
   const accountEmail = email.trim();
+  const {
+    fetchInboxMessages,
+    fetchSentMessages,
+    markMessageAsRead,
+    deleteMessage: deleteMessageRequest,
+    sendMessage: sendMessageRequest,
+  } = useMailboxApi(token);
   const messages = activeView === "sent" ? sentMessages : inboxMessages;
   const unreadCount = inboxMessages.filter((message) => message.read !== true).length;
   const editor = useEditor({
@@ -48,47 +50,63 @@ const Mailbox = ({ email, onLogout }) => {
   });
 
   useEffect(() => {
-    if (activeView === "compose") return undefined;
+    let isCurrent = true;
+    let isFetching = false;
+    let hasLoaded = false;
+
+    const loadInbox = async () => {
+      if (!isCurrent || isFetching) return;
+      isFetching = true;
+      const isInitialLoad = !hasLoaded;
+      if (isInitialLoad) setIsLoading(true);
+
+      try {
+        const nextMessages = await fetchInboxMessages(accountEmail);
+        if (isCurrent) {
+          setInboxMessages((currentMessages) =>
+            haveMessagesChanged(currentMessages, nextMessages)
+              ? nextMessages
+              : currentMessages,
+          );
+          setError("");
+        }
+      } catch (loadError) {
+        if (isCurrent) setError(loadError.message);
+      } finally {
+        hasLoaded = true;
+        isFetching = false;
+        if (isCurrent && isInitialLoad) setIsLoading(false);
+      }
+    };
+
+    void loadInbox();
+    const intervalId = window.setInterval(() => {
+      void loadInbox();
+    }, 2000);
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(intervalId);
+    };
+  }, [accountEmail, fetchInboxMessages, refreshKey]);
+
+  useEffect(() => {
+    if (activeView !== "sent") return undefined;
 
     let isCurrent = true;
-    const loadMessages = async () => {
+    const loadSentMessages = async () => {
       setIsLoading(true);
       setError("");
 
-      const fieldPath = activeView === "inbox" ? "recipientEmail" : "senderUid";
-      const fieldValue = activeView === "inbox" ? accountEmail : uid;
-
       try {
-        let response = await fetch(buildMessagesQueryUrl(fieldPath, fieldValue, token));
-        let data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(getDatabaseError(data, response.status));
-        }
-
-        let nextMessages = Object.entries(data || {})
-          .map(([id, message]) => ({ id, ...message }))
-          .sort((first, second) => (second.sentAt || 0) - (first.sentAt || 0));
-
-        if (
-          activeView === "sent" &&
-          nextMessages.length === 0 &&
-          accountEmail
-        ) {
-          response = await fetch(buildMessagesQueryUrl("senderEmail", accountEmail, token));
-          data = await response.json();
-          if (!response.ok) {
-            throw new Error(getDatabaseError(data, response.status));
-          }
-
-          nextMessages = Object.entries(data || {})
-            .map(([id, message]) => ({ id, ...message }))
-            .sort((first, second) => (second.sentAt || 0) - (first.sentAt || 0));
-        }
+        const nextMessages = await fetchSentMessages(uid, accountEmail);
 
         if (isCurrent) {
-          if (activeView === "inbox") setInboxMessages(nextMessages);
-          else setSentMessages(nextMessages);
+          setSentMessages((currentMessages) =>
+            haveMessagesChanged(currentMessages, nextMessages)
+              ? nextMessages
+              : currentMessages,
+          );
         }
       } catch (loadError) {
         if (isCurrent) setError(loadError.message);
@@ -97,11 +115,11 @@ const Mailbox = ({ email, onLogout }) => {
       }
     };
 
-    loadMessages();
+    void loadSentMessages();
     return () => {
       isCurrent = false;
     };
-  }, [activeView, accountEmail, refreshKey, token, uid]);
+  }, [activeView, accountEmail, fetchSentMessages, refreshKey, uid]);
 
   const selectView = (view) => {
     setError("");
@@ -117,18 +135,7 @@ const Mailbox = ({ email, onLogout }) => {
     if (activeView !== "inbox" || message.read === true) return;
 
     try {
-      const response = await fetch(
-        `${databaseMessagesUrl.replace(/\.json$/, `/${encodeURIComponent(message.id)}.json`)}?auth=${encodeURIComponent(token)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ read: true }),
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(getDatabaseError(data, response.status));
-      }
+      await markMessageAsRead(message.id);
 
       setInboxMessages((currentMessages) =>
         currentMessages.map((currentMessage) =>
@@ -149,20 +156,7 @@ const Mailbox = ({ email, onLogout }) => {
     setDeletingMessageIds((currentIds) => [...currentIds, message.id]);
 
     try {
-      const response = await fetch(
-        `${databaseMessagesUrl.replace(/\.json$/, `/${encodeURIComponent(message.id)}.json`)}?auth=${encodeURIComponent(token)}`,
-        { method: "DELETE" },
-      );
-      const data = await response.text();
-      if (!response.ok) {
-        let responseData = null;
-        try {
-          responseData = data ? JSON.parse(data) : null;
-        } catch {
-          responseData = data;
-        }
-        throw new Error(getDatabaseError(responseData, response.status));
-      }
+      await deleteMessageRequest(message.id);
 
       setInboxMessages((currentMessages) =>
         currentMessages.filter((currentMessage) => currentMessage.id !== message.id),
@@ -193,27 +187,16 @@ const Mailbox = ({ email, onLogout }) => {
 
     setIsSending(true);
     try {
-      const response = await fetch(
-        `${databaseMessagesUrl}?auth=${encodeURIComponent(token)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            senderUid: uid,
-            senderEmail: accountEmail,
-            recipientEmail: recipientEmail.trim(),
-            subject: subject.trim(),
-            bodyHtml: editor.getHTML(),
-            bodyText: editor.getText(),
-            sentAt: Date.now(),
-            read: false,
-          }),
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(getDatabaseError(data, response.status));
-      }
+      await sendMessageRequest({
+        senderUid: uid,
+        senderEmail: accountEmail,
+        recipientEmail: recipientEmail.trim(),
+        subject: subject.trim(),
+        bodyHtml: editor.getHTML(),
+        bodyText: editor.getText(),
+        sentAt: Date.now(),
+        read: false,
+      });
 
       setRecipientEmail("");
       setSubject("");

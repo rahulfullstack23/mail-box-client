@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { FIREBASE_API_KEY } from "../../firebaseConfig";
+import useFirebaseAuth from "../../hooks/useFirebaseAuth";
 import "./Login.css";
 
 const Login = () => {
+  const { signIn, sendPasswordReset } = useFirebaseAuth();
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -19,19 +20,11 @@ const Login = () => {
     const password = form.elements.password.value;
 
     try {
-      const response = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(FIREBASE_API_KEY)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, returnSecureToken: true }),
-        },
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error?.message || "LOGIN_FAILED");
-      }
+      const data = await signIn({
+        email,
+        password,
+        returnSecureToken: true,
+      });
 
       localStorage.setItem("mailboxToken", data.idToken);
       localStorage.setItem("mailboxUid", data.localId);
@@ -74,18 +67,7 @@ const Login = () => {
     }
 
     try {
-      const response = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(FIREBASE_API_KEY)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error?.message || "PASSWORD_RESET_FAILED");
-      }
+      await sendPasswordReset(email);
       setStatus("Password reset email sent. Check your inbox.");
     } catch (err) {
       setError(

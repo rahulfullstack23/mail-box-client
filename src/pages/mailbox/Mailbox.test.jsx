@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Mailbox from "./Mailbox";
 
@@ -121,6 +121,44 @@ describe("Inbox unread blue-dot logic", () => {
   beforeEach(() => {
     localStorage.setItem("mailboxToken", "test-token");
     localStorage.setItem("mailboxUid", "test-user");
+  });
+
+  it("polls for new inbox mail and updates the unread count", async () => {
+    const newMessage = {
+      ...unreadMessage,
+      id: "message-3",
+      subject: "New mail",
+      sentAt: unreadMessage.sentAt + 1,
+    };
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() =>
+        jsonResponse({ [unreadMessage.id]: unreadMessage }),
+      )
+      .mockImplementation(() =>
+        jsonResponse({
+          [unreadMessage.id]: unreadMessage,
+          [newMessage.id]: newMessage,
+        }),
+      ));
+
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("1 unread messages")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(screen.getByText("New mail")).toBeInTheDocument();
+    expect(screen.getByLabelText("2 unread messages")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("shows an unread dot for a message whose read flag is false", async () => {
