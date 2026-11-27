@@ -447,9 +447,16 @@
   border-bottom: 1px solid #edf0f4;
 }
 
+.message-row-container {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+}
+
 .message-row {
   display: grid;
-  width: 100%;
+  min-width: 0;
+  flex: 1;
   min-height: 48px;
   grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) 88px;
   align-items: center;
@@ -526,6 +533,29 @@
 .message-row time {
   text-align: right;
   white-space: nowrap;
+}
+
+.delete-message-button {
+  align-self: center;
+  min-width: 68px;
+  margin: 6px 4px 6px 8px;
+  padding: 7px 10px;
+  border: 1px solid #e7aeb1;
+  border-radius: 6px;
+  color: #b4232e;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.delete-message-button:hover {
+  border-color: #c95b63;
+  background: #fff2f3;
+}
+
+.delete-message-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .message-reader {

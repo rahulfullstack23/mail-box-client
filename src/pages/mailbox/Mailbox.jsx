@@ -35,6 +35,7 @@ const Mailbox = ({ email, onLogout }) => {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [deletingMessageIds, setDeletingMessageIds] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const token = localStorage.getItem("mailboxToken") || "";
   const uid = localStorage.getItem("mailboxUid") || "";
@@ -58,17 +59,33 @@ const Mailbox = ({ email, onLogout }) => {
       const fieldValue = activeView === "inbox" ? accountEmail : uid;
 
       try {
-        const response = await fetch(
-          buildMessagesQueryUrl(fieldPath, fieldValue, token),
-        );
-        const data = await response.json();
+        let response = await fetch(buildMessagesQueryUrl(fieldPath, fieldValue, token));
+        let data = await response.json();
+
         if (!response.ok) {
           throw new Error(getDatabaseError(data, response.status));
         }
 
-        const nextMessages = Object.entries(data || {})
+        let nextMessages = Object.entries(data || {})
           .map(([id, message]) => ({ id, ...message }))
-          .sort((first, second) => second.sentAt - first.sentAt);
+          .sort((first, second) => (second.sentAt || 0) - (first.sentAt || 0));
+
+        if (
+          activeView === "sent" &&
+          nextMessages.length === 0 &&
+          accountEmail
+        ) {
+          response = await fetch(buildMessagesQueryUrl("senderEmail", accountEmail, token));
+          data = await response.json();
+          if (!response.ok) {
+            throw new Error(getDatabaseError(data, response.status));
+          }
+
+          nextMessages = Object.entries(data || {})
+            .map(([id, message]) => ({ id, ...message }))
+            .sort((first, second) => (second.sentAt || 0) - (first.sentAt || 0));
+        }
+
         if (isCurrent) {
           if (activeView === "inbox") setInboxMessages(nextMessages);
           else setSentMessages(nextMessages);
@@ -122,6 +139,45 @@ const Mailbox = ({ email, onLogout }) => {
       );
     } catch (readError) {
       setError(`Could not save read status: ${readError.message}`);
+    }
+  };
+
+  const deleteMessage = async (event, message) => {
+    event.stopPropagation();
+    setError("");
+    setStatus("");
+    setDeletingMessageIds((currentIds) => [...currentIds, message.id]);
+
+    try {
+      const response = await fetch(
+        `${databaseMessagesUrl.replace(/\.json$/, `/${encodeURIComponent(message.id)}.json`)}?auth=${encodeURIComponent(token)}`,
+        { method: "DELETE" },
+      );
+      const data = await response.text();
+      if (!response.ok) {
+        let responseData = null;
+        try {
+          responseData = data ? JSON.parse(data) : null;
+        } catch {
+          responseData = data;
+        }
+        throw new Error(getDatabaseError(responseData, response.status));
+      }
+
+      setInboxMessages((currentMessages) =>
+        currentMessages.filter((currentMessage) => currentMessage.id !== message.id),
+      );
+      setSentMessages((currentMessages) =>
+        currentMessages.filter((currentMessage) => currentMessage.id !== message.id),
+      );
+      if (selectedMessageId === message.id) setSelectedMessageId("");
+      setStatus("Message deleted.");
+    } catch (deleteError) {
+      setError(`Could not delete message: ${deleteError.message}`);
+    } finally {
+      setDeletingMessageIds((currentIds) =>
+        currentIds.filter((messageId) => messageId !== message.id),
+      );
     }
   };
 
@@ -378,30 +434,41 @@ const Mailbox = ({ email, onLogout }) => {
                 <ul className="message-rows">
                   {visibleMessages.map((message) => (
                     <li key={message.id}>
-                      <button
-                        className="message-row"
-                        data-unread={activeView === "inbox" && message.read !== true}
-                        type="button"
-                        onClick={() => openMessage(message)}
-                      >
-                        <span className="message-row-sender">
-                          {activeView === "inbox" && message.read !== true && (
-                            <span className="unread-dot" aria-label="Unread" />
-                          )}
-                          <span>
-                            {activeView === "inbox"
-                              ? message.senderEmail
-                              : `To: ${message.recipientEmail}`}
+                      <div className="message-row-container">
+                        <button
+                          className="message-row"
+                          data-unread={activeView === "inbox" && message.read !== true}
+                          type="button"
+                          onClick={() => openMessage(message)}
+                        >
+                          <span className="message-row-sender">
+                            {activeView === "inbox" && message.read !== true && (
+                              <span className="unread-dot" aria-label="Unread" />
+                            )}
+                            <span>
+                              {activeView === "inbox"
+                                ? message.senderEmail
+                                : `To: ${message.recipientEmail}`}
+                            </span>
                           </span>
-                        </span>
-                        <span className="message-row-summary">
-                          <strong>{message.subject || "(no subject)"}</strong>
-                          <span>{message.bodyText || ""}</span>
-                        </span>
-                        <time dateTime={new Date(message.sentAt).toISOString()}>
-                          {new Date(message.sentAt).toLocaleDateString()}
-                        </time>
-                      </button>
+                          <span className="message-row-summary">
+                            <strong>{message.subject || "(no subject)"}</strong>
+                            <span>{message.bodyText || ""}</span>
+                          </span>
+                          <time dateTime={new Date(message.sentAt).toISOString()}>
+                            {new Date(message.sentAt).toLocaleDateString()}
+                          </time>
+                        </button>
+                        <button
+                          className="delete-message-button"
+                          type="button"
+                          aria-label={`Delete ${message.subject || "(no subject)"}`}
+                          disabled={deletingMessageIds.includes(message.id)}
+                          onClick={(event) => deleteMessage(event, message)}
+                        >
+                          {deletingMessageIds.includes(message.id) ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

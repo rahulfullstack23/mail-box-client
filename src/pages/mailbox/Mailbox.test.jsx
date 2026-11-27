@@ -49,11 +49,24 @@ const readMessage = {
   read: true,
 };
 
+const sentMessage = {
+  id: "sent-1",
+  senderUid: "test-user",
+  senderEmail: "me@example.com",
+  recipientEmail: "other@example.com",
+  subject: "Project update",
+  bodyText: "The project is ready.",
+  bodyHtml: "<p>The <strong>project</strong> is ready.</p>",
+  sentAt: 1700000000000,
+  read: false,
+};
+
 const jsonResponse = (body, status = 200) =>
   Promise.resolve({
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
+    text: () => Promise.resolve(typeof body === "string" ? body : JSON.stringify(body)),
   });
 
 describe("Mailbox message reader", () => {
@@ -68,7 +81,9 @@ describe("Mailbox message reader", () => {
     ));
     render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Quarterly report/i }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /sender@example\.com.*Quarterly report/i,
+    }));
 
     expect(screen.getByRole("heading", { name: "Quarterly report" })).toBeInTheDocument();
     expect(screen.getByText("sender@example.com")).toBeInTheDocument();
@@ -80,7 +95,9 @@ describe("Mailbox message reader", () => {
     ));
     render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Quarterly report/i }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /sender@example\.com.*Quarterly report/i,
+    }));
 
     expect(screen.getByText("report").tagName).toBe("STRONG");
   });
@@ -91,7 +108,9 @@ describe("Mailbox message reader", () => {
     ));
     render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Quarterly report/i }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /sender@example\.com.*Quarterly report/i,
+    }));
     fireEvent.click(screen.getByRole("button", { name: "← Back to Inbox" }));
 
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
@@ -134,7 +153,9 @@ describe("Inbox unread blue-dot logic", () => {
     render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
 
     expect(await screen.findByLabelText("1 unread messages")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Quarterly report/i }));
+    fireEvent.click(screen.getByRole("button", {
+      name: /sender@example\.com.*Quarterly report/i,
+    }));
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Unread")).not.toBeInTheDocument();
@@ -148,7 +169,9 @@ describe("Inbox unread blue-dot logic", () => {
     ));
     render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Already read/i }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /reader@example\.com.*Already read/i,
+    }));
 
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -188,5 +211,149 @@ describe("Inbox unread blue-dot logic", () => {
 
     await screen.findByText("To: me@example.com");
     expect(screen.queryByLabelText("Unread")).not.toBeInTheDocument();
+  });
+});
+
+describe("Sent mailbox", () => {
+  beforeEach(() => {
+    localStorage.setItem("mailboxToken", "test-token");
+    localStorage.setItem("mailboxUid", "test-user");
+  });
+
+  it("opens the Sent view and requests mails by sender UID", async () => {
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse({}))
+      .mockImplementationOnce(() =>
+        jsonResponse({ [sentMessage.id]: sentMessage }),
+      ));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Sent/i }));
+
+    expect(await screen.findByText("Project update")).toBeInTheDocument();
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("orderBy=%22senderUid%22"),
+    );
+  });
+
+  it("shows sent mails in the same reusable list and recipient details", async () => {
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse({}))
+      .mockImplementationOnce(() =>
+        jsonResponse({ [sentMessage.id]: sentMessage }),
+      ));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Sent/i }));
+    expect(await screen.findByText("To: other@example.com")).toBeInTheDocument();
+  });
+
+  it("opens a sent mail in the reusable reader and shows the recipient", async () => {
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse({}))
+      .mockImplementationOnce(() =>
+        jsonResponse({ [sentMessage.id]: sentMessage }),
+      ));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Sent/i }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /To: other@example\.com.*Project update/i,
+    }));
+
+    expect(screen.getByRole("heading", { name: "Project update" })).toBeInTheDocument();
+    expect(screen.getByText("To: other@example.com")).toBeInTheDocument();
+  });
+
+  it("falls back to senderEmail for older sent mails", async () => {
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() => jsonResponse({}))
+      .mockImplementationOnce(() => jsonResponse({}))
+      .mockImplementationOnce(() =>
+        jsonResponse({
+          [sentMessage.id]: {
+            ...sentMessage,
+            senderUid: undefined,
+          },
+        }),
+      ));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Sent/i }));
+
+    expect(await screen.findByText("Project update")).toBeInTheDocument();
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("orderBy=%22senderEmail%22"),
+    );
+  });
+});
+
+describe("Inbox mail deletion", () => {
+  beforeEach(() => {
+    localStorage.setItem("mailboxToken", "test-token");
+    localStorage.setItem("mailboxUid", "test-user");
+  });
+
+  it("shows a delete button next to each Inbox message", async () => {
+    vi.stubGlobal("fetch", vi.fn(() =>
+      jsonResponse({ [unreadMessage.id]: unreadMessage }),
+    ));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Delete Quarterly report",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("deletes the mail through Firebase and removes it from the Inbox", async () => {
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() =>
+        jsonResponse({ [unreadMessage.id]: unreadMessage }),
+      )
+      .mockImplementationOnce(() => jsonResponse(null)));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Delete Quarterly report",
+    }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Quarterly report")).not.toBeInTheDocument();
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(`/messages/message-1.json`),
+      { method: "DELETE" },
+    );
+  });
+
+  it("keeps the mail visible and shows an error when deletion fails", async () => {
+    vi.stubGlobal("fetch", vi
+      .fn()
+      .mockImplementationOnce(() =>
+        jsonResponse({ [unreadMessage.id]: unreadMessage }),
+      )
+      .mockImplementationOnce(() =>
+        jsonResponse({ error: "Permission denied" }, 403),
+      ));
+    render(<Mailbox email="me@example.com" onLogout={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Delete Quarterly report",
+    }));
+
+    expect(
+      await screen.findByRole("alert"),
+    ).toHaveTextContent("Could not delete message: Permission denied");
+    expect(screen.getByText("Quarterly report")).toBeInTheDocument();
   });
 });
